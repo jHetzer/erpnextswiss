@@ -827,6 +827,7 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                 if debug:
                     frappe.msgprint(fields)
                 valid = True
+                isDefaultCustomer = False
                 # Process validation if specified
                 if template.advanced_settings:
                     validationField = getattr(template,"valid_field",None)
@@ -881,12 +882,6 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                             new_payment_entry.payment_type = "Receive"
                             new_payment_entry.party_type = "Customer";
                             
-                            # Try to match customer field with existing customer
-                            customer = frappe.get_value('Customer', customerMapping, 'name')
-                            if customer:
-                                new_payment_entry.party = customerMapping
-                            else:
-                                new_payment_entry.party = default_customer
                             new_payment_entry.posting_date = booked_at
                             new_payment_entry.paid_to = account
                             new_payment_entry.received_amount = received_amount
@@ -897,6 +892,22 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                             new_payment_entry.iban = getProcessedValue("IBAN",field_definitions["IBAN"], fields)
                             new_payment_entry.bic = getProcessedValue("BIC",field_definitions["BIC"], fields)
                             
+                            # Try to match customer field by iban or existing customer
+                            if debug: frappe.msgprint(_("Customer Mapping: '{0}'").format(customerMapping))
+                            customer = frappe.get_value('Customer', customerMapping, 'name')
+                            if debug: frappe.msgprint(_("Found Customer: '{0}'").format(customer))
+                            if new_payment_entry.iban:
+                                iban_sql_query = ("SELECT `name` " +
+                                            "FROM `tabCustomer` " +
+                                            "WHERE `iban` = '{0}'".format(new_payment_entry.iban))
+                                customer_by_iban = frappe.db.sql(iban_sql_query, as_dict=True)
+                                if len(customer_by_iban) == 1:
+                                    new_payment_entry.party = customer_by_iban[0].name
+                            if not new_payment_entry.party and customer:
+                                new_payment_entry.party = customer
+                            if not new_payment_entry.party:
+                                new_payment_entry.party = default_customer
+                                isDefaultCustomer = True
                             # If remark field is not defined or cannot be found use whole line
                             remark = getProcessedValue("REMARK",field_definitions["REMARK"], fields)
                             if remark:
