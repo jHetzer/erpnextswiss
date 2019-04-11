@@ -26,6 +26,14 @@ frappe.match_payments = {
             // navigate to bank import tool
             window.location.href="/desk#bankimport";
 		});
+		this.page.add_menu_item((__("Payment") + " => "+ __("Sale")), function() {
+			var payment_to_sale = 'erpnextswiss.erpnextswiss.page.match_payments.match_payments.one_to_one';
+			unattended_matching(payment_to_sale);
+		});
+		this.page.add_menu_item((__("Payments") + " => "+ __("Sale")), function() {
+			var payments_to_sale = 'erpnextswiss.erpnextswiss.page.match_payments.match_payments.many_to_one';
+			unattended_matching(payments_to_sale);
+		});
         
 		// attach button handlers
 		this.page.main.find(".btn-match").on('click', function() {                   
@@ -146,6 +154,23 @@ function auto_match(page, method="docid") {
     //catch (err) {
     //     frappe.msgprint( __("Please select a payment entry.") );
     //}
+}
+
+function unattended_matching(frappe_method) {
+	if(frappe_method){
+		frappe.match_payments.start_wait();
+		frappe.call({
+			method: frappe_method,
+			args: {},
+			callback: function(r) {
+				if (r.message) {
+					//console.log(r);
+				}
+				frappe.match_payments.end_wait();
+				location.reload();
+			}
+		});
+	}
 }
 
 function submit(payment_entry, page) {
