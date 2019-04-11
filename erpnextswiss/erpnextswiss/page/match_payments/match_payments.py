@@ -66,6 +66,89 @@ def submit_all(payment_entries):
     return { 'message': "Done" }
 
 @frappe.whitelist()
+def one_to_one():
+    sql_query = ("""
+    SELECT *
+    FROM
+      (SELECT tPE.`name` AS PaymentName ,
+              tSI.`name` AS SaleName ,
+              tPE.`party_name` AS CustomerName ,
+              tPE.`paid_amount` AS Amount ,
+              tSI.`posting_date` AS SalePostingDate ,
+              tSI.`due_date` AS SalesDueDate ,
+              tPE.`posting_date` AS PaymentPostingDate ,
+              REPLACE(tPE.`remarks`, CHAR(13), '<br>') AS Remarks ,
+              count(*) OVER (PARTITION BY tPE.`name`) AS PaymentCount ,
+              count(*) OVER (PARTITION BY tSI.`name`) AS SalesCount
+       FROM `tabPayment Entry` AS tPE
+       LEFT JOIN `tabSales Invoice` AS tSI ON tSI.`outstanding_amount` = tPE.`paid_amount`
+       AND tSI.`posting_date` <= tPE.`posting_date`
+       AND tSI.`due_date` >= tPE.`posting_date`
+       AND tSI.`customer` = tPE.`party`
+       WHERE tPE.`docstatus` = 0
+         AND tPE.`payment_type` = 'Receive'
+         AND tSI.`docstatus` = 1
+         AND tSI.`outstanding_amount` > 0
+       ORDER BY tPE.`name` ASC) AS matches
+    WHERE `PaymentCount` = 1
+      AND `SalesCount` = 1""")
+      
+    return auto_match_payments(sql_query)
+
+@frappe.whitelist()
+def many_to_one():
+    sql_query = ("""
+    SELECT *
+    FROM
+        (SELECT tPE.`name` AS PaymentName ,
+                     tSI.`name` AS SaleName ,
+                     tPE.`party_name` AS CustomerName ,
+                     tSI.`outstanding_amount` AS Outstanding ,
+                     tPE.`paid_amount` AS Amount ,
+                     tSI.`posting_date` AS SalePostingDate ,
+                     tSI.`due_date` AS SalesDueDate ,
+                     tPE.`posting_date` AS PaymentPostingDate ,
+                     REPLACE(tPE.`remarks`, CHAR(13), '<br>') AS Remarks ,
+                     sum(tPE.`paid_amount`) OVER (PARTITION BY tSI.`name`) AS TotalAmount ,
+                     count(*) OVER (PARTITION BY tPE.`name`) AS PaymentCount ,
+                     count(*) OVER (PARTITION BY tSI.`name`) AS SalesCount
+        FROM `tabPayment Entry` AS tPE
+        LEFT JOIN `tabSales Invoice` AS tSI ON tSI.`posting_date` <= tPE.`posting_date`
+        AND tSI.`due_date` >= tPE.`posting_date`
+        AND tSI.`customer` = tPE.`party`
+        WHERE tPE.`docstatus` = 0
+            AND tPE.`payment_type` = 'Receive'
+            AND tSI.`docstatus` = 1
+            AND tSI.`outstanding_amount` > 0
+        ORDER BY tPE.`name` ASC) AS matches
+        WHERE `PaymentCount` = 1
+        AND `TotalAmount` = `Outstanding`""")
+      
+    return auto_match_payments(sql_query)
+
+def auto_match_payments(sql_query):
+    
+    matchable_Payments = frappe.db.sql(sql_query, as_dict=True)
+    #frappe.msgprint("TEst")
+    for payment_entry in matchable_Payments:
+        #frappe.msgprint("Sale: " +payment_entry.SaleName)
+        #frappe.msgprint("Payment: " +payment_entry.PaymentName)
+        matched_payment = match(payment_entry.SaleName, payment_entry.PaymentName)
+        
+        try:
+            submit(matched_payment["payment_entry"])
+        except:
+            # Revert references
+            payment_doc = frappe.get_doc("Payment Entry",matched_payment["payment_entry"])
+            # frappe.msgprint("Remove doc ref: " + matched_payment["payment_entry"])
+            if payment_doc.references:
+                for i in range(len(payment_doc.references)):
+                    if payment_doc.references[i].reference_name == payment_entry.SaleName:
+                        payment_doc.references.remove(payment_doc.references[i])
+                payment_doc.save()
+    return { 'message': "Done", 'payments': matchable_Payments }
+
+@frappe.whitelist()
 def auto_match(method="docid"):
     # make method lower case
     method = method.lower()
