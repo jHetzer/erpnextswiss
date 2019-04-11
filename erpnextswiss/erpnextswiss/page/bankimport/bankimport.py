@@ -848,17 +848,12 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                 if valid and amount != "":
                     try:
                         # Assign empty string to amount seperators (can be None if template is imported)
-                        if template.k_separator:
-                            k_separator = template.k_separator
-                        else: 
-                            k_separator = "'"
-                        if template.decimal_separator:
-                            decimal_separator = template.decimal_separator
-                        else: 
-                            decimal_separator = "."
-                        received_amount = float(amount.replace(k_separator,"").replace(decimal_separator,"."))
+                        if template.k_separator is None: template.k_separator = ""
+                        if template.decimal_separator is None: template.decimal_separator = ""
+                        received_amount = float(amount.replace(template.k_separator,"").replace(template.decimal_separator,"."))
                     except Exception as e:
                         frappe.throw(_("Could not parse amount with value {0} check thousand and decimal separator. Error: {1}").format(amount, str(e)))
+                    
                     if received_amount > 0:
                         booked_at = datetime.strptime(getProcessedValue("BOOKED_AT",field_definitions["BOOKED_AT"], fields),template.date_format)
                         try:
@@ -871,8 +866,7 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                         
                         # If specified use hash as reference instead of ref field
                         if template.transaction_hash == 1:
-                            source = "{0}:{1}:{2}".format(booked_at, received_amount, customerMapping).encode('utf-8')
-                            transaction_id = hashlib.md5(source).hexdigest()
+                            transaction_id = hashlib.md5("{0}".format(lines[i])).hexdigest()
                         else:
                             transaction_id = getProcessedValue("TRANSACTION",field_definitions["TRANSACTION"], fields)
                         
@@ -911,6 +905,9 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                             # If remark field is not defined or cannot be found use whole line
                             remark = getProcessedValue("REMARK",field_definitions["REMARK"], fields)
                             if remark:
+                                # Add sender to remark field
+                                if isDefaultCustomer:
+                                    remark = ("Sender '{0}': {1}").format(customerMapping, remark)
                                 new_payment_entry.remarks = remark
                             else:
                                 new_payment_entry.remarks = lines[i]
@@ -922,7 +919,7 @@ def parse_by_template(content, bank, account, auto_submit=False, debug=False):
                                 new_payment_entries.append(inserted_payment_entry.name)
         return new_payment_entries
     except Exception as e:
-        frappe.throw(_("Failed to parse lines with error: {0}").format(str(e)))
+        frappe.throw(_("Failed to parse lines with error: {0}<br>{1}").format(str(e),frappe.get_traceback()))
 
 def tpl_regex_replace(reg_find, reg_replace, content, stage, reg_group=""):
     # Validate arguments
