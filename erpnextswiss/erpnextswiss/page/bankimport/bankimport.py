@@ -709,7 +709,7 @@ class data_import_wrapper():
             u'submit_after_import': 1
         }
         if attachment_name:
-            self.debug = True
+            self.debug = False
             data_import_doc = frappe.get_doc(tpl_data_import)
             self.new_doc = data_import_doc.insert()
             self.attach_doc = frappe.get_doc("File", attachment_name)
