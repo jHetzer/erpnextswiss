@@ -809,6 +809,8 @@ def parse_by_template(content, bank, account, file_name, auto_submit=False, debu
         data_import_doc = data_import_wrapper(file_name)
     else:
         data_import_doc = data_import_wrapper(False)
+    company = frappe.get_doc("Account",account).company
+    if debug: frappe.msgprint(_("Company: {0}").format(company))
     # collect all lines of the file
     if six.PY2:
         content = (b""+ content).decode(template.file_encoding)
@@ -1008,6 +1010,7 @@ def parse_by_template(content, bank, account, file_name, auto_submit=False, debu
                             new_payment_entry.party_type = "Customer";
 
                             new_payment_entry.posting_date = booked_at
+                            new_payment_entry.company = company
                             new_payment_entry.paid_to = account
                             new_payment_entry.received_amount = received_amount
                             new_payment_entry.paid_amount = received_amount
