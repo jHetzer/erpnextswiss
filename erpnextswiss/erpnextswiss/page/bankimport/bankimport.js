@@ -6,8 +6,16 @@ frappe.pages['bankimport'].on_page_load = function(wrapper) {
 	});
 
 	frappe.bankimport.make(page);
+	frappe.realtime.on("data_import_progress", function(data) {
+				//console.log(data)
+				if(data.progress==100) {
+					frappe.hide_progress();
+				} else {
+					frappe.show_progress(data.data_import,data.progress,100,data.message)
+				}
+		});
 	frappe.bankimport.run();
-	
+
 	// add the application reference
 	frappe.breadcrumbs.add("ERPNextSwiss");
 }
@@ -60,25 +68,42 @@ frappe.bankimport = {
 					// read file content
 					content = String.fromCharCode.apply(null, Array.prototype.slice.apply(new Uint8Array(event.target.result)));
 					//content = event.target.result;
-					
-					if (format == "csv") {
-						// call bankimport method with file content
-						frappe.call({
-							method: 'erpnextswiss.erpnextswiss.page.bankimport.bankimport.parse_file',
+
+					if (format == "csv" && file.type == "text/csv") {
+
+						var uploadOptions = {
+							parent: {},
 							args: {
-								content: content,
-								bank: bank,
-								account: account,
-								auto_submit: auto_submit,
-								debug : debug
+								folder: "Home/Attachments",
+								from_form: 1,
 							},
 							callback: function(r) {
-								if (r.message) {
-									frappe.bankimport.render_response(page, r.message);
-								} 
+								frappe.call({
+									method: 'erpnextswiss.erpnextswiss.page.bankimport.bankimport.parse_file',
+									args: {
+										content: content,
+										bank: bank,
+										account: account,
+										file_name: (r == null ? "" : r.name),
+										auto_submit: auto_submit,
+										debug : debug
+									},
+									callback: function(r) {
+										if (r.message) {
+											frappe.bankimport.render_response(page, r.message);
+										}
+									}
+								});
 							}
-						}); 
-					} 
+						};
+						if (debug){
+							uploadOptions.callback()
+						}
+						else{
+							file.is_private = 1;
+							frappe.upload.upload_multiple_files([file], uploadOptions.args, uploadOptions)
+						}
+					}
 					else if (format == "camt054") {
 						// call bankimport method with file content
 						frappe.call({
